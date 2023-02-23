@@ -2,6 +2,7 @@
 #define __APPLICATION_HPP__
 
 #include "window.hpp"
+#include "vulkan_pipeline.hpp"
 #include <string>
 
 namespace vlk {
@@ -14,7 +15,8 @@ namespace vlk {
         void run();
 
     private:
-        Window m_window{ Window(WINDOW_WIDTH, WINDOW_HEIGHT, "Learning Vulkan") };
+        Window m_window { Window(WINDOW_WIDTH, WINDOW_HEIGHT, "Learning Vulkan") };
+        VulkanPipeline m_pipeline { VulkanPipeline("shaders/bin/simple_shader.vert.spv", "shaders/bin/simple_shader.frag.spv") };
     };
 
 }

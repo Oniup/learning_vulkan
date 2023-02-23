@@ -1,7 +1,7 @@
 #ifndef __WINDOW_HPP__
 #define __WINDOW_HPP__
 
-#define GLFW_INCLUDE_VULKAN
+#include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
 
 #include <string>
@@ -14,7 +14,6 @@ namespace vlk {
         ~Window();
 
         inline bool should_close() { return glfwWindowShouldClose(m_internal_window); }
-
     private:
         void _init_window();
 

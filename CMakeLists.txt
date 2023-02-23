@@ -1,12 +1,15 @@
 cmake_minimum_required (VERSION 3.2)
 
-project (LearningVulkan)
+project ("LearningVulkan")
+
+add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 
 set (
     APPLICATION_SOURCES
 
     src/main.cpp
     src/application.cpp
+    src/vulkan_pipeline.cpp
     src/window.cpp
 )
 
@@ -14,6 +17,7 @@ set (
     APPLICATION_HEADERS
 
     src/application.hpp
+    src/vulkan_pipeline.hpp
     src/window.hpp
 )
 
@@ -46,3 +50,15 @@ target_link_libraries (
 
 set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY CXX_STANDARD 17)
 set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
+
+if (WIN32)
+    add_custom_target(
+        shaders
+
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bin
+        ${CMAKE_BINARY_DIR}/Debug/shaders/bin
+    )
+
+    add_dependencies(${CMAKE_PROJECT_NAME} shaders)
+endif ()
