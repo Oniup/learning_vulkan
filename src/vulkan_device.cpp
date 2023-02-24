@@ -20,13 +20,7 @@ namespace vlk {
             const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data) {
 
         if (message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-            std::cout << "validation layer [ ";
-            std::cout << message_type && VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT ? "general " : "";
-            std::cout << message_type && VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT ? "validation " : "";
-            std::cout << message_type && VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT ? "performance " : "";
-            std::cout << message_type && VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT ? "device_address_binding " : "";
-            std::cout << message_type && VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT ? "flag_bits_max_enum " : "";
-            std::cout << "]: " << callback_data->pMessage << "\n";
+            std::cout << callback_data->pMessage << "\n\n";
 
             // TODO: improve validation to be more specific with what objects it is affecting
         }
@@ -78,7 +72,7 @@ namespace vlk {
 
     void VulkanDevice::terminate() {
 #if !defined(NDEBUG)
-        if (!m_enable_validation_layers) {
+        if (m_enable_validation_layers) {
             auto destroy_debug_utils_messenger_ext_func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT");
             if (destroy_debug_utils_messenger_ext_func != nullptr) {
                 destroy_debug_utils_messenger_ext_func(m_instance, m_debug_messenger, nullptr);
@@ -174,14 +168,13 @@ namespace vlk {
     }
 
     void VulkanDevice::_populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info) {
+        create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT;
+        create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
         create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
-            VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT |
             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
         create_info.pfnUserCallback = debug_call_back;
-        create_info.pUserData = nullptr;
     }
 
     bool VulkanDevice::_check_validation_layer_support() {
