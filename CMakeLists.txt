@@ -11,6 +11,7 @@ set (
     src/application.cpp
     src/vulkan_pipeline.cpp
     src/window.cpp
+    src/vulkan_device.cpp
 )
 
 set (
@@ -19,6 +20,7 @@ set (
     src/application.hpp
     src/vulkan_pipeline.hpp
     src/window.hpp
+    src/vulkan_device.hpp
 )
 
 add_executable (${CMAKE_PROJECT_NAME} ${APPLICATION_SOURCES} ${APPLICATION_HEADERS})

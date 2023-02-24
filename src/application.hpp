@@ -3,7 +3,7 @@
 
 #include "window.hpp"
 #include "vulkan_pipeline.hpp"
-#include <string>
+#include "vulkan_device.hpp"
 
 namespace vlk {
 
@@ -12,11 +12,15 @@ namespace vlk {
         static constexpr int WINDOW_WIDTH = 800;
         static constexpr int WINDOW_HEIGHT = 600;
 
+        Application();
+        ~Application();
+
         void run();
 
     private:
-        Window m_window { Window(WINDOW_WIDTH, WINDOW_HEIGHT, "Learning Vulkan") };
-        VulkanPipeline m_pipeline { VulkanPipeline("shaders/bin/simple_shader.vert.spv", "shaders/bin/simple_shader.frag.spv") };
+        Window m_window;
+        VulkanPipeline m_pipeline;
+        VulkanDevice m_device;
     };
 
 }
