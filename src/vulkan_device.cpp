@@ -239,6 +239,8 @@ namespace vlk {
             std::exit(-1);
         }
 
+        vkGetDeviceQueue(m_device, indices.graphics_family.value(), 0, &m_graphics_queue);
+
         std::cout << "successfully initialized vulkan logical device\n";
     }
 

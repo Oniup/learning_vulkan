@@ -15,6 +15,9 @@ namespace vlk {
         VulkanDevice(Window* window);
         ~VulkanDevice() = default;
 
+        inline VkQueue get_graphics_queue() { return m_graphics_queue; }
+        inline const VkQueue get_graphics_queue() const { return m_graphics_queue; }
+
         void print_extension_support() const;
         void terminate();
 
@@ -46,6 +49,7 @@ namespace vlk {
         VkPhysicalDevice m_physical_device{ nullptr };
         VkPhysicalDeviceFeatures m_physical_device_features;
         VkDevice m_device{ nullptr };
+        VkQueue m_graphics_queue{ nullptr };
 
 #if !defined(NDEBUG)
         VkDebugUtilsMessengerEXT m_debug_messenger{ nullptr };
