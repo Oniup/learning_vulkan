@@ -7,7 +7,7 @@ namespace vlk {
 
 #if defined(NDEBUG)
     bool VulkanDevice::m_enable_validation_layers = false;
-    std::vector<const char*> VulkanDevice::m_validation_layers = {};
+    std::vector<const char*> VulkanDevice::m_validation_layers{};
     static VKAPI_ATTR VkBool32 VKAPI_CALL debug_call_back() { return VK_TRUE; }
 #else
     bool VulkanDevice::m_enable_validation_layers = true;
@@ -51,11 +51,10 @@ namespace vlk {
     VulkanDevice::VulkanDevice(Window* window) : m_window(window) {
         print_extension_support();
 
-        _create_instance();
-        _setup_debug_messenger();
-        _pick_physical_device();
-        _create_logical_device();
-        _create_command_pool();
+        _init_instance();
+        _init_debug_manager();
+        _init_physical_device();
+        _init_logical_device();
     }
 
     void VulkanDevice::print_extension_support() const {
@@ -82,24 +81,24 @@ namespace vlk {
             }
         }
 #endif
-
+        vkDestroyDevice(m_device, nullptr);
         vkDestroyInstance(m_instance, nullptr);
     }
 
-    void VulkanDevice::_create_instance() {
+    void VulkanDevice::_init_instance() {
         if (m_enable_validation_layers && !_check_validation_layer_support()) {
             std::cout << "validation layer requested, but not available\n";
             std::exit(-1);
         }
 
-        VkApplicationInfo app_info = {};
+        VkApplicationInfo app_info{};
         app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         app_info.pApplicationName = m_window->get_title().c_str();
         app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
         app_info.pEngineName = "No Engine";
         app_info.apiVersion = VK_API_VERSION_1_0;
 
-        VkInstanceCreateInfo create_info = {};
+        VkInstanceCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         create_info.pApplicationInfo = &app_info;
 
@@ -107,7 +106,7 @@ namespace vlk {
         create_info.enabledExtensionCount = static_cast<uint32_t>(required_extensions.size());
         create_info.ppEnabledExtensionNames = required_extensions.data();
 
-        VkDebugUtilsMessengerCreateInfoEXT debug_create_info = {};
+        VkDebugUtilsMessengerCreateInfoEXT debug_create_info{};
         if (m_enable_validation_layers) {
             create_info.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
             create_info.ppEnabledLayerNames = m_validation_layers.data();
@@ -125,13 +124,13 @@ namespace vlk {
             std::exit(-1);
         }
 
-        std::cout << "successfully created vulkan instance with the extensions:\n";
+        std::cout << "successfully initialized vulkan instance with the extensions:\n";
         for (const char* extension : required_extensions) {
             std::cout << "\t* " << extension << "\n";
         }
     }
 
-    void VulkanDevice::_setup_debug_messenger() {
+    void VulkanDevice::_init_debug_manager() {
 #if !defined(NDEBUG)
         if (!m_enable_validation_layers) {
             return;
@@ -152,19 +151,95 @@ namespace vlk {
             std::cout << "vkCreateDebugUtilsMessengerEXT function doesn't exit\n";
             std::exit(-1);
         }
+
+        std::cout << "successfully initialized vulkan debug messenger ext\n";
 #endif
     }
 
-    void VulkanDevice::_pick_physical_device() {
+    void VulkanDevice::_init_physical_device() {
+        uint32_t device_count = 0;
+        vkEnumeratePhysicalDevices(m_instance, &device_count, nullptr);
 
+        if (device_count == 0) {
+            std::cout << "failed to find any physical devices capable of vulkan rendering\n";
+            std::exit(-1);
+        }
+
+        std::vector<VkPhysicalDevice> physical_devices(device_count);
+        vkEnumeratePhysicalDevices(m_instance, &device_count, physical_devices.data());
+
+        // checking if the device is suitable
+        std::cout << "physical devices on system:\n";
+        int score_to_beat = 0;
+        VkPhysicalDeviceProperties physical_device_properties;
+        for (VkPhysicalDevice device : physical_devices) {
+            VkPhysicalDeviceProperties properties;
+            VkPhysicalDeviceFeatures features;
+
+            vkGetPhysicalDeviceProperties(device, &properties);
+            vkGetPhysicalDeviceFeatures(device, &features);
+
+            std::cout << "\t* " << properties.deviceName << "\n";
+
+            if (features.geometryShader) {
+                int score = 0;
+                if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+                    score += 1000;
+                }
+                score += properties.limits.maxImageDimension2D;
+
+                if (score > score_to_beat) {
+                    score_to_beat = score;
+                    m_physical_device = device;
+                    physical_device_properties = properties;
+                    m_physical_device_features = features;
+                }
+            }
+        }
+
+        if (m_physical_device == nullptr) {
+            std::cout << "something serious has happened when picking a physical device, cause this should never be called\n";
+            std::exit(-1);
+        }
+
+        std::cout << "chosen physical device: " << physical_device_properties.deviceName << "\n";
     }
 
-    void VulkanDevice::_create_logical_device() {
+    void VulkanDevice::_init_logical_device() {
+        QueueFamilyIndices indices = _find_queue_families(m_physical_device);
 
-    }
+        // only interested in the graphics queue
+        std::vector<VkDeviceQueueCreateInfo> queue_create_infos(1);
 
-    void VulkanDevice::_create_command_pool() {
+        // graphics queue family
+        VkDeviceQueueCreateInfo* queue_create_info = &queue_create_infos[0];
+        queue_create_info->sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info->queueFamilyIndex = indices.graphics_family.value();
+        queue_create_info->queueCount = 1;
+        queue_create_info->pQueuePriorities = &indices.priority;
 
+        VkDeviceCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        create_info.pEnabledFeatures = &m_physical_device_features;
+        create_info.pQueueCreateInfos = queue_create_infos.data();
+        create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
+
+        // for older version of vulkan, newer versions will ignore this parameters
+        create_info.enabledExtensionCount = 0;
+        if (m_enable_validation_layers) {
+            create_info.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
+            create_info.ppEnabledLayerNames = m_validation_layers.data();
+        }
+        else {
+            create_info.enabledLayerCount = 0;
+        }
+
+        if (vkCreateDevice(m_physical_device, &create_info, nullptr, &m_device) != VK_SUCCESS) {
+            std::cout << "failed to create logical device\n";
+            std::exit(-1);
+        }
+
+        std::cout << "successfully initialized vulkan logical device\n";
     }
 
     void VulkanDevice::_populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info) {
@@ -204,6 +279,30 @@ namespace vlk {
         }
 
         return found_all_layers;
+    }
+
+    VulkanDevice::QueueFamilyIndices VulkanDevice::_find_queue_families(VkPhysicalDevice physical_device) {
+        QueueFamilyIndices indices{};
+
+        uint32_t queue_family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
+        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.data());
+
+        uint32_t i = 0;
+        for (VkQueueFamilyProperties& property : queue_families) {
+            if (property.queueCount & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphics_family = i;
+            }
+
+            if (indices.is_complete()) {
+                break;
+            }
+
+            i++;
+        }
+
+        return indices;
     }
 
 }

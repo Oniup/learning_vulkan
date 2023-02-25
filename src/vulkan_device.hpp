@@ -4,6 +4,7 @@
 #include "window.hpp"
 #include <vulkan/vulkan.h>
 #include <vector>
+#include <optional>
 
 namespace vlk {
 
@@ -18,23 +19,36 @@ namespace vlk {
         void terminate();
 
     private:
-        void _create_instance();
-        void _setup_debug_messenger();
-        void _pick_physical_device();
-        void _create_logical_device();
-        void _create_command_pool();
+        struct QueueFamilyIndices {
+            float priority{ 1.0f };
+            std::optional<uint32_t> graphics_family{};
+
+            inline bool is_complete() {
+                return graphics_family.has_value();
+            }
+        };
+
+        // initialization functions
+        void _init_instance();
+        void _init_debug_manager();
+        void _init_physical_device();
+        void _init_logical_device();
 
         void _populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
         bool _check_validation_layer_support();
+        QueueFamilyIndices _find_queue_families(VkPhysicalDevice physical_device);
 
         static bool m_enable_validation_layers;
         static std::vector<const char*> m_validation_layers;
 
-        Window* m_window;
-        VkInstance m_instance;
+        Window* m_window{ nullptr };
+        VkInstance m_instance{ nullptr };
+        VkPhysicalDevice m_physical_device{ nullptr };
+        VkPhysicalDeviceFeatures m_physical_device_features;
+        VkDevice m_device{ nullptr };
 
 #if !defined(NDEBUG)
-        VkDebugUtilsMessengerEXT m_debug_messenger;
+        VkDebugUtilsMessengerEXT m_debug_messenger{ nullptr };
 #endif 
     };
 
