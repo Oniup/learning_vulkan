@@ -12,11 +12,20 @@ namespace vlk {
         glfwTerminate();
     }
 
-    void Window::create_window_surface(VkInstance instance, VkSurfaceKHR* surface) {
-        if (glfwCreateWindowSurface(instance, m_internal_window, nullptr, surface) != VK_SUCCESS) {
+    void Window::init_surface(VkInstance instance) {
+        if (glfwCreateWindowSurface(instance, m_internal_window, nullptr, &m_surface) != VK_SUCCESS) {
             std::cout << "failed to create vulkan window surface\n";
             std::exit(-1);
         }
+    }
+
+    void Window::destroy_surface(VkInstance instance) {
+        if (instance == nullptr) {
+            std::cout << "failed to destroy vulkan window surface as the instance is null\n";
+            std::exit(-1);
+        }
+
+        vkDestroySurfaceKHR(instance, m_surface, nullptr);
     }
 
     bool Window::should_close() {

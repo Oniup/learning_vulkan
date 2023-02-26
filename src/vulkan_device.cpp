@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <set>
 
 namespace vlk {
 
@@ -32,6 +33,10 @@ namespace vlk {
     }
 #endif
 
+    std::vector<const char*> VulkanDevice::m_device_extensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    };
+
     std::vector<const char*> VulkanDevice::get_required_extensions() {
         uint32_t glfw_extension_count = 0;
         const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
@@ -53,6 +58,9 @@ namespace vlk {
 
         _init_instance();
         _init_debug_manager();
+
+        m_window->init_surface(m_instance);
+
         _init_physical_device();
         _init_logical_device();
     }
@@ -82,7 +90,107 @@ namespace vlk {
         }
 #endif
         vkDestroyDevice(m_device, nullptr);
+        m_window->destroy_surface(m_instance);
         vkDestroyInstance(m_instance, nullptr);
+    }
+
+    void VulkanDevice::_populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info) {
+        create_info = {};
+        create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+        create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+        create_info.pfnUserCallback = debug_call_back;
+    }
+
+    bool VulkanDevice::_check_validation_layer_support() {
+        uint32_t layer_count = 0;
+        vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+        std::vector<VkLayerProperties> available_layers(layer_count);
+        vkEnumerateInstanceLayerProperties(&layer_count, available_layers.data());
+
+        std::cout << "checking available validation layers\n";
+        bool found_all_layers = true;
+        for (const char* layer_name : m_validation_layers) {
+            bool found_layer = false;
+            size_t layer_length = std::strlen(layer_name);
+
+            for (const VkLayerProperties& layer_property : available_layers) {
+                if (std::strncmp(layer_name, layer_property.layerName, layer_length) == 0) {
+                    found_layer = true;
+                    std::cout << "\t* " << layer_name << " found\n";
+                    break;
+                }
+            }
+
+            if (!found_layer) {
+                std::cout << "failed to find the validation layer: " << layer_name << " in available layers\n";
+                found_all_layers = false;
+            }
+        }
+
+        return found_all_layers;
+    }
+
+    VulkanDeviceQueueFamilyIndices VulkanDevice::_find_rendering_queue_families(VkPhysicalDevice physical_device, VkSurfaceKHR surface) {
+        VulkanDeviceQueueFamilyIndices indices{};
+
+        uint32_t queue_family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
+        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.data());
+
+        uint32_t i = 0;
+        for (VkQueueFamilyProperties& property : queue_families) {
+            if (property.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphics_family = i;
+            }
+
+            VkBool32 present_support = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support);
+            if (present_support == VK_TRUE) {
+                indices.present_family = i;
+            }
+
+            if (indices.is_rendering_complete()) {
+                break;
+            }
+
+            i++;
+        }
+
+        return indices;
+    }
+
+    bool VulkanDevice::_check_physical_device_required_extensions_support(VkPhysicalDevice physical_device) {
+        uint32_t device_extension_count = 0;
+        vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &device_extension_count, nullptr);
+        std::vector<VkExtensionProperties> device_extensions(device_extension_count);
+        vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &device_extension_count, device_extensions.data());
+
+        std::cout << "\t  available physical device extensions device extensions:\n";
+        for (VkExtensionProperties& extensions : device_extensions) {
+            std::cout << "\t\t* " << extensions.extensionName << "\n";
+        }
+
+        for (const char* required_extension : m_device_extensions) {
+            bool found = false;
+            size_t required_extension_length = std::strlen(required_extension);
+            for (VkExtensionProperties& extension : device_extensions) {
+                if (std::strncmp(required_extension, extension.extensionName, required_extension_length) == 0) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                return false;
+            }
+        }
+
+        
+       return true;
     }
 
     void VulkanDevice::_init_instance() {
@@ -181,18 +289,20 @@ namespace vlk {
 
             std::cout << "\t* " << properties.deviceName << "\n";
 
-            if (features.geometryShader) {
-                int score = 0;
-                if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-                    score += 1000;
-                }
-                score += properties.limits.maxImageDimension2D;
+            if (_check_physical_device_required_extensions_support(device)) {
+                if (features.geometryShader) {
+                    int score = 0;
+                    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+                        score += 1000;
+                    }
+                    score += properties.limits.maxImageDimension2D;
 
-                if (score > score_to_beat) {
-                    score_to_beat = score;
-                    m_physical_device = device;
-                    physical_device_properties = properties;
-                    m_physical_device_features = features;
+                    if (score > score_to_beat) {
+                        score_to_beat = score;
+                        m_physical_device = device;
+                        physical_device_properties = properties;
+                        m_physical_device_features = features;
+                    }
                 }
             }
         }
@@ -202,21 +312,26 @@ namespace vlk {
             std::exit(-1);
         }
 
-        std::cout << "chosen physical device: " << physical_device_properties.deviceName << "\n";
+        std::cout << "chosen physical device: " << physical_device_properties.deviceName << ", extensions enabled:\n";
+        for (const char* extension_name : m_device_extensions) {
+            std::cout << "\t* " << extension_name << "\n";
+        }
     }
 
     void VulkanDevice::_init_logical_device() {
-        QueueFamilyIndices indices = _find_queue_families(m_physical_device);
+        VulkanDeviceQueueFamilyIndices indices = _find_rendering_queue_families(m_physical_device, m_window->get_surface());
 
-        // only interested in the graphics queue
-        std::vector<VkDeviceQueueCreateInfo> queue_create_infos(1);
+        std::vector<VkDeviceQueueCreateInfo> queue_create_infos{};
+        std::set<uint32_t> queue_create_info_ids = { indices.graphics_family.value(), indices.present_family.value() };
 
-        // graphics queue family
-        VkDeviceQueueCreateInfo* queue_create_info = &queue_create_infos[0];
-        queue_create_info->sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_info->queueFamilyIndex = indices.graphics_family.value();
-        queue_create_info->queueCount = 1;
-        queue_create_info->pQueuePriorities = &indices.priority;
+        for (uint32_t queue_family_id : queue_create_info_ids) {
+            VkDeviceQueueCreateInfo create_info{};
+            create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            create_info.pQueuePriorities = &indices.priority;
+            create_info.queueFamilyIndex = queue_family_id;
+            create_info.queueCount = 1;
+            queue_create_infos.push_back(create_info);
+        }
 
         VkDeviceCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -224,8 +339,10 @@ namespace vlk {
         create_info.pQueueCreateInfos = queue_create_infos.data();
         create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
 
+        create_info.enabledExtensionCount = static_cast<uint32_t>(m_device_extensions.size());
+        create_info.ppEnabledExtensionNames = m_device_extensions.data();
+
         // for older version of vulkan, newer versions will ignore this parameters
-        create_info.enabledExtensionCount = 0;
         if (m_enable_validation_layers) {
             create_info.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
             create_info.ppEnabledLayerNames = m_validation_layers.data();
@@ -240,71 +357,9 @@ namespace vlk {
         }
 
         vkGetDeviceQueue(m_device, indices.graphics_family.value(), 0, &m_graphics_queue);
+        vkGetDeviceQueue(m_device, indices.present_family.value(), 0, &m_present_queue);
 
         std::cout << "successfully initialized vulkan logical device\n";
-    }
-
-    void VulkanDevice::_populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info) {
-        create_info = {};
-        create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
-            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-        create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
-            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
-        create_info.pfnUserCallback = debug_call_back;
-    }
-
-    bool VulkanDevice::_check_validation_layer_support() {
-        uint32_t layer_count = 0;
-        vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
-        std::vector<VkLayerProperties> available_layers(layer_count);
-        vkEnumerateInstanceLayerProperties(&layer_count, available_layers.data());
-
-        std::cout << "checking available validation layers\n";
-        bool found_all_layers = true;
-        for (const char* layer_name : m_validation_layers) {
-            bool found_layer = false;
-            size_t layer_length = std::strlen(layer_name);
-
-            for (const VkLayerProperties& layer_property : available_layers) {
-                if (std::strncmp(layer_name, layer_property.layerName, layer_length) == 0) {
-                    found_layer = true;
-                    std::cout << "\t* " << layer_name << " found\n";
-                    break;
-                }
-            }
-
-            if (!found_layer) {
-                std::cout << "failed to find the validation layer: " << layer_name << " in available layers\n";
-                found_all_layers = false;
-            }
-        }
-
-        return found_all_layers;
-    }
-
-    VulkanDevice::QueueFamilyIndices VulkanDevice::_find_queue_families(VkPhysicalDevice physical_device) {
-        QueueFamilyIndices indices{};
-
-        uint32_t queue_family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
-        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.data());
-
-        uint32_t i = 0;
-        for (VkQueueFamilyProperties& property : queue_families) {
-            if (property.queueCount & VK_QUEUE_GRAPHICS_BIT) {
-                indices.graphics_family = i;
-            }
-
-            if (indices.is_complete()) {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
     }
 
 }

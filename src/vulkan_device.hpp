@@ -8,6 +8,16 @@
 
 namespace vlk {
 
+    struct VulkanDeviceQueueFamilyIndices {
+        float priority{ 1.0f };
+        std::optional<uint32_t> graphics_family{};
+        std::optional<uint32_t> present_family{};
+
+        inline bool is_rendering_complete() {
+            return graphics_family.has_value() && present_family.has_value();
+        }
+    };
+
     class VulkanDevice {
     public:
         static std::vector<const char*> get_required_extensions();
@@ -22,14 +32,10 @@ namespace vlk {
         void terminate();
 
     private:
-        struct QueueFamilyIndices {
-            float priority{ 1.0f };
-            std::optional<uint32_t> graphics_family{};
-
-            inline bool is_complete() {
-                return graphics_family.has_value();
-            }
-        };
+        static void _populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
+        static bool _check_validation_layer_support();
+        static VulkanDeviceQueueFamilyIndices _find_rendering_queue_families(VkPhysicalDevice physical_device, VkSurfaceKHR surface);
+        static bool _check_physical_device_required_extensions_support(VkPhysicalDevice physical_device);
 
         // initialization functions
         void _init_instance();
@@ -37,12 +43,10 @@ namespace vlk {
         void _init_physical_device();
         void _init_logical_device();
 
-        void _populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
-        bool _check_validation_layer_support();
-        QueueFamilyIndices _find_queue_families(VkPhysicalDevice physical_device);
-
+    private:
         static bool m_enable_validation_layers;
         static std::vector<const char*> m_validation_layers;
+        static std::vector<const char*> m_device_extensions;
 
         Window* m_window{ nullptr };
         VkInstance m_instance{ nullptr };
@@ -50,6 +54,7 @@ namespace vlk {
         VkPhysicalDeviceFeatures m_physical_device_features;
         VkDevice m_device{ nullptr };
         VkQueue m_graphics_queue{ nullptr };
+        VkQueue m_present_queue{ nullptr };
 
 #if !defined(NDEBUG)
         VkDebugUtilsMessengerEXT m_debug_messenger{ nullptr };
