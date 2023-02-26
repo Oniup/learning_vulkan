@@ -53,6 +53,72 @@ namespace vlk {
         return required_extensions;
     }
 
+    QueueFamilyIndices QueueFamilyIndices::query(VkPhysicalDevice physical_device, VkSurfaceKHR surface) {
+        QueueFamilyIndices indices{};
+
+        uint32_t queue_family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
+        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.data());
+
+        uint32_t i = 0;
+        for (VkQueueFamilyProperties& property : queue_families) {
+            if (property.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphics_family = i;
+            }
+
+            VkBool32 present_support = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support);
+            if (present_support == VK_TRUE) {
+                indices.present_family = i;
+            }
+
+            if (indices.supports_rendering()) {
+                break;
+            }
+
+            i++;
+        }
+
+        return indices;
+    }
+
+    SwapchainSupportDetails SwapchainSupportDetails::query(VkPhysicalDevice physical_device, VkSurfaceKHR surface) {
+        SwapchainSupportDetails support_details{};
+
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &support_details.capabilities);
+
+        uint32_t format_count = 0;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr);
+        if (format_count != 0) {
+            support_details.formats.resize(format_count);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, support_details.formats.data());
+
+            uint32_t present_mode_count = 0;
+            vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, nullptr);
+            if (present_mode_count != 0) {
+                support_details.present_modes.resize(present_mode_count);
+                vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, support_details.present_modes.data());
+            }
+        }
+
+        return support_details;
+    }
+
+    bool SwapchainSupportDetails::is_supported() const {
+        return !formats.empty() && !present_modes.empty();
+    }
+
+    VkSurfaceFormatKHR SwapchainSupportDetails::choose_surface_format() {
+        VkSurfaceFormatKHR format;
+        return format;
+    }
+
+    VkPresentModeKHR SwapchainSupportDetails::choose_surface_present_mode() {
+        VkPresentModeKHR present_mode;
+        return present_mode;
+    }
+
     VulkanDevice::VulkanDevice(Window* window) : m_window(window) {
         print_extension_support();
 
@@ -131,36 +197,6 @@ namespace vlk {
         }
 
         return found_all_layers;
-    }
-
-    VulkanDeviceQueueFamilyIndices VulkanDevice::_find_rendering_queue_families(VkPhysicalDevice physical_device, VkSurfaceKHR surface) {
-        VulkanDeviceQueueFamilyIndices indices{};
-
-        uint32_t queue_family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
-        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.data());
-
-        uint32_t i = 0;
-        for (VkQueueFamilyProperties& property : queue_families) {
-            if (property.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                indices.graphics_family = i;
-            }
-
-            VkBool32 present_support = VK_FALSE;
-            vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_support);
-            if (present_support == VK_TRUE) {
-                indices.present_family = i;
-            }
-
-            if (indices.is_rendering_complete()) {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
     }
 
     bool VulkanDevice::_check_physical_device_required_extensions_support(VkPhysicalDevice physical_device) {
@@ -280,16 +316,26 @@ namespace vlk {
         std::cout << "physical devices on system:\n";
         int score_to_beat = 0;
         VkPhysicalDeviceProperties physical_device_properties;
-        for (VkPhysicalDevice device : physical_devices) {
+        for (VkPhysicalDevice physical_device : physical_devices) {
             VkPhysicalDeviceProperties properties;
             VkPhysicalDeviceFeatures features;
 
-            vkGetPhysicalDeviceProperties(device, &properties);
-            vkGetPhysicalDeviceFeatures(device, &features);
+            vkGetPhysicalDeviceProperties(physical_device, &properties);
+            vkGetPhysicalDeviceFeatures(physical_device, &features);
 
             std::cout << "\t* " << properties.deviceName << "\n";
 
-            if (_check_physical_device_required_extensions_support(device)) {
+            if (_check_physical_device_required_extensions_support(physical_device)) {
+                QueueFamilyIndices indices = QueueFamilyIndices::query(physical_device, m_window->get_surface());
+                if (!indices.supports_rendering()) {
+                    continue;
+                }
+
+                SwapchainSupportDetails swapchain_support = SwapchainSupportDetails::query(physical_device, m_window->get_surface());
+                if (!swapchain_support.is_supported()) {
+                    continue;
+                }
+
                 if (features.geometryShader) {
                     int score = 0;
                     if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
@@ -299,7 +345,7 @@ namespace vlk {
 
                     if (score > score_to_beat) {
                         score_to_beat = score;
-                        m_physical_device = device;
+                        m_physical_device = physical_device;
                         physical_device_properties = properties;
                         m_physical_device_features = features;
                     }
@@ -319,7 +365,8 @@ namespace vlk {
     }
 
     void VulkanDevice::_init_logical_device() {
-        VulkanDeviceQueueFamilyIndices indices = _find_rendering_queue_families(m_physical_device, m_window->get_surface());
+        QueueFamilyIndices indices = QueueFamilyIndices::query(m_physical_device, m_window->get_surface());
+        SwapchainSupportDetails swapchain_support = SwapchainSupportDetails::query(m_physical_device, m_window->get_surface());
 
         std::vector<VkDeviceQueueCreateInfo> queue_create_infos{};
         std::set<uint32_t> queue_create_info_ids = { indices.graphics_family.value(), indices.present_family.value() };

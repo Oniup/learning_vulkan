@@ -8,14 +8,28 @@
 
 namespace vlk {
 
-    struct VulkanDeviceQueueFamilyIndices {
+    struct QueueFamilyIndices {
         float priority{ 1.0f };
         std::optional<uint32_t> graphics_family{};
         std::optional<uint32_t> present_family{};
 
-        inline bool is_rendering_complete() {
+        static QueueFamilyIndices query(VkPhysicalDevice physical_device, VkSurfaceKHR surface);
+
+        inline bool supports_rendering() const {
             return graphics_family.has_value() && present_family.has_value();
         }
+    };
+
+    struct SwapchainSupportDetails {
+        VkSurfaceCapabilitiesKHR capabilities{};
+        std::vector<VkSurfaceFormatKHR> formats{};
+        std::vector<VkPresentModeKHR> present_modes{};
+
+        static SwapchainSupportDetails query(VkPhysicalDevice physical_device, VkSurfaceKHR surface);
+
+        bool is_supported() const;
+        VkSurfaceFormatKHR choose_surface_format();
+        VkPresentModeKHR choose_surface_present_mode();
     };
 
     class VulkanDevice {
@@ -34,7 +48,6 @@ namespace vlk {
     private:
         static void _populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
         static bool _check_validation_layer_support();
-        static VulkanDeviceQueueFamilyIndices _find_rendering_queue_families(VkPhysicalDevice physical_device, VkSurfaceKHR surface);
         static bool _check_physical_device_required_extensions_support(VkPhysicalDevice physical_device);
 
         // initialization functions
