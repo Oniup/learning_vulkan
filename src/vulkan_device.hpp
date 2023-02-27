@@ -29,7 +29,8 @@ namespace vlk {
 
         bool is_supported() const;
         VkSurfaceFormatKHR choose_surface_format();
-        VkPresentModeKHR choose_surface_present_mode();
+        VkPresentModeKHR choose_present_mode();
+        VkExtent2D choose_swapchain_extent(Window* window);
     };
 
     class VulkanDevice {
@@ -43,6 +44,7 @@ namespace vlk {
         inline const VkQueue get_graphics_queue() const { return m_graphics_queue; }
 
         void print_extension_support() const;
+        std::vector<VkImage> get_swapchain_images();
         void terminate();
 
     private:
@@ -55,6 +57,7 @@ namespace vlk {
         void _init_debug_manager();
         void _init_physical_device();
         void _init_logical_device();
+        void _init_swapchain();
 
     private:
         static bool m_enable_validation_layers;
@@ -68,6 +71,7 @@ namespace vlk {
         VkDevice m_device{ nullptr };
         VkQueue m_graphics_queue{ nullptr };
         VkQueue m_present_queue{ nullptr };
+        VkSwapchainKHR m_swapchain{ nullptr };
 
 #if !defined(NDEBUG)
         VkDebugUtilsMessengerEXT m_debug_messenger{ nullptr };

@@ -1,8 +1,10 @@
 #include "vulkan_device.hpp"
 
 #include <GLFW/glfw3.h>
-#include <iostream>
-#include <set>
+#include <iostream>     // std::cout, std::exit, std::...
+#include <set>          // std::set
+#include <limits>       // std::numeric_limits
+#include <algorithm>    // std::clamp
 
 namespace vlk {
 
@@ -110,13 +112,50 @@ namespace vlk {
     }
 
     VkSurfaceFormatKHR SwapchainSupportDetails::choose_surface_format() {
-        VkSurfaceFormatKHR format;
-        return format;
+        if (present_modes.size() == 0) {
+            std::cout << "cannot choose surface format from SwapchainSupportDetails as there is nothing in the vector formats\n";
+            std::exit(-1);
+        }
+
+        for (VkSurfaceFormatKHR& format : formats) {
+            if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                return format;
+            }
+        }
+
+        return formats[0];
     }
 
-    VkPresentModeKHR SwapchainSupportDetails::choose_surface_present_mode() {
-        VkPresentModeKHR present_mode;
-        return present_mode;
+    VkPresentModeKHR SwapchainSupportDetails::choose_present_mode() {
+        if (present_modes.size() == 0) {
+            std::cout << "cannot choose surface present mode from SwapchainSupportDetails as there is nothing in the vector present_modes\n";
+            std::exit(-1);
+        }
+
+        for (VkPresentModeKHR& present_mode : present_modes) {
+            if (present_mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                return present_mode;
+            }
+        }
+
+        return VK_PRESENT_MODE_FIFO_KHR;
+    }
+
+    VkExtent2D SwapchainSupportDetails::choose_swapchain_extent(Window* window) {
+        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+            return capabilities.currentExtent;
+        }
+
+        int width, height;
+        glfwGetFramebufferSize(window->get_internal_window(), &width, &height);
+        VkExtent2D actual_size = {
+            static_cast<uint32_t>(width),
+            static_cast<uint32_t>(height)
+        };
+        actual_size.width = std::clamp(actual_size.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+        actual_size.height = std::clamp(actual_size.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+        return actual_size;
     }
 
     VulkanDevice::VulkanDevice(Window* window) : m_window(window) {
@@ -129,6 +168,7 @@ namespace vlk {
 
         _init_physical_device();
         _init_logical_device();
+        _init_swapchain();
     }
 
     void VulkanDevice::print_extension_support() const {
@@ -143,6 +183,11 @@ namespace vlk {
         }
     }
 
+    std::vector<VkImage> VulkanDevice::get_swapchain_images() {
+        // TODO:
+        return {};
+    }
+
     void VulkanDevice::terminate() {
 #if !defined(NDEBUG)
         if (m_enable_validation_layers) {
@@ -155,6 +200,7 @@ namespace vlk {
             }
         }
 #endif
+        vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
         vkDestroyDevice(m_device, nullptr);
         m_window->destroy_surface(m_instance);
         vkDestroyInstance(m_instance, nullptr);
@@ -366,7 +412,6 @@ namespace vlk {
 
     void VulkanDevice::_init_logical_device() {
         QueueFamilyIndices indices = QueueFamilyIndices::query(m_physical_device, m_window->get_surface());
-        SwapchainSupportDetails swapchain_support = SwapchainSupportDetails::query(m_physical_device, m_window->get_surface());
 
         std::vector<VkDeviceQueueCreateInfo> queue_create_infos{};
         std::set<uint32_t> queue_create_info_ids = { indices.graphics_family.value(), indices.present_family.value() };
@@ -407,6 +452,56 @@ namespace vlk {
         vkGetDeviceQueue(m_device, indices.present_family.value(), 0, &m_present_queue);
 
         std::cout << "successfully initialized vulkan logical device\n";
+    }
+
+    void VulkanDevice::_init_swapchain() {
+        SwapchainSupportDetails support = SwapchainSupportDetails::query(m_physical_device, m_window->get_surface());
+
+        VkSurfaceFormatKHR surface_format = support.choose_surface_format();
+        VkPresentModeKHR present_mode = support.choose_present_mode();
+        VkExtent2D size = support.choose_swapchain_extent(m_window);
+
+        uint32_t image_count = support.capabilities.minImageCount + 1; // recommended to go at least one over the minimum
+        if (support.capabilities.maxImageCount > 0 && image_count > support.capabilities.maxImageCount) {
+            image_count = support.capabilities.maxImageCount;
+        }
+
+        VkSwapchainCreateInfoKHR create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        create_info.surface = m_window->get_surface();
+        create_info.minImageCount = image_count;
+        create_info.imageFormat = surface_format.format;
+        create_info.imageExtent = size;
+        create_info.imageArrayLayers = 1; // this should always be 1, unless trying to create stereoscopic 3D applications
+        create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; 
+
+        QueueFamilyIndices indices = QueueFamilyIndices::query(m_physical_device, m_window->get_surface());
+        uint32_t queue_family_indices[] = { indices.graphics_family.value(), indices.present_family.value() };
+
+        if (indices.graphics_family != indices.present_family) {
+            create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+            create_info.queueFamilyIndexCount = 2;
+            create_info.pQueueFamilyIndices = queue_family_indices;
+        }
+        else {
+            create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            create_info.queueFamilyIndexCount = 0;
+            create_info.pQueueFamilyIndices = nullptr;
+        }
+
+        create_info.preTransform = support.capabilities.currentTransform;
+        create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        create_info.oldSwapchain = VK_NULL_HANDLE;
+
+        create_info.presentMode = present_mode;
+        create_info.clipped = VK_TRUE;
+
+        if (vkCreateSwapchainKHR(m_device, &create_info, nullptr, &m_swapchain) != VK_SUCCESS) {
+            std::cout << "failed to create vulkan swapchain\n";
+            std::exit(-1);
+        }
+
+        std::cout << "successfully initialized vulkan swapchain\n";
     }
 
 }
