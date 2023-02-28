@@ -169,6 +169,7 @@ namespace vlk {
         _init_physical_device();
         _init_logical_device();
         _init_swapchain();
+        _init_swapchain_images();
     }
 
     void VulkanDevice::print_extension_support() const {
@@ -183,11 +184,6 @@ namespace vlk {
         }
     }
 
-    std::vector<VkImage> VulkanDevice::get_swapchain_images() {
-        // TODO:
-        return {};
-    }
-
     void VulkanDevice::terminate() {
 #if !defined(NDEBUG)
         if (m_enable_validation_layers) {
@@ -200,6 +196,10 @@ namespace vlk {
             }
         }
 #endif
+        for (VkImageView& image_view : m_swapchain_image_views) {
+            vkDestroyImageView(m_device, image_view, nullptr);
+        }
+
         vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
         vkDestroyDevice(m_device, nullptr);
         m_window->destroy_surface(m_instance);
@@ -457,9 +457,9 @@ namespace vlk {
     void VulkanDevice::_init_swapchain() {
         SwapchainSupportDetails support = SwapchainSupportDetails::query(m_physical_device, m_window->get_surface());
 
-        VkSurfaceFormatKHR surface_format = support.choose_surface_format();
-        VkPresentModeKHR present_mode = support.choose_present_mode();
-        VkExtent2D size = support.choose_swapchain_extent(m_window);
+        m_swapchain_surface_format = support.choose_surface_format();
+        m_swapchain_present_mode = support.choose_present_mode();
+        m_swapchain_extent = support.choose_swapchain_extent(m_window);
 
         uint32_t image_count = support.capabilities.minImageCount + 1; // recommended to go at least one over the minimum
         if (support.capabilities.maxImageCount > 0 && image_count > support.capabilities.maxImageCount) {
@@ -470,8 +470,8 @@ namespace vlk {
         create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         create_info.surface = m_window->get_surface();
         create_info.minImageCount = image_count;
-        create_info.imageFormat = surface_format.format;
-        create_info.imageExtent = size;
+        create_info.imageFormat = m_swapchain_surface_format.format;
+        create_info.imageExtent = m_swapchain_extent;
         create_info.imageArrayLayers = 1; // this should always be 1, unless trying to create stereoscopic 3D applications
         create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; 
 
@@ -493,7 +493,7 @@ namespace vlk {
         create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         create_info.oldSwapchain = VK_NULL_HANDLE;
 
-        create_info.presentMode = present_mode;
+        create_info.presentMode = m_swapchain_present_mode;
         create_info.clipped = VK_TRUE;
 
         if (vkCreateSwapchainKHR(m_device, &create_info, nullptr, &m_swapchain) != VK_SUCCESS) {
@@ -502,6 +502,41 @@ namespace vlk {
         }
 
         std::cout << "successfully initialized vulkan swapchain\n";
+    }
+
+    void VulkanDevice::_init_swapchain_images() {
+        uint32_t swapchain_image_count = 0;
+        vkGetSwapchainImagesKHR(m_device, m_swapchain, &swapchain_image_count, nullptr);
+        m_swapchain_images.resize(swapchain_image_count);
+        vkGetSwapchainImagesKHR(m_device, m_swapchain, &swapchain_image_count, m_swapchain_images.data());
+
+        m_swapchain_image_views.resize(m_swapchain_images.size());
+        for (size_t i = 0; i < m_swapchain_images.size(); i++) {
+            VkImageViewCreateInfo create_info{};
+            create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            create_info.image = m_swapchain_images[i];
+            create_info.format = m_swapchain_surface_format.format;
+            create_info.viewType =  VK_IMAGE_VIEW_TYPE_2D;
+
+            create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+            // TODO: learn mipmap stuff ...
+            create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            create_info.subresourceRange.baseMipLevel = 0;
+            create_info.subresourceRange.levelCount = 1;
+            create_info.subresourceRange.baseArrayLayer = 0;
+            create_info.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(m_device, &create_info, nullptr, &m_swapchain_image_views[i]) != VK_SUCCESS) {
+                std::cout << "failed to create image views\n";
+                std::exit(-1);
+            }
+        }
+
+        std::cout << "successfully created swapchain image views\n";
     }
 
 }
