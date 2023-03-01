@@ -51,6 +51,7 @@ namespace vlk {
         inline const VkDevice get_device() const { return m_device; }
         inline const VkPhysicalDevice get_physical_device() const { return m_physical_device; }
         inline const VkSwapchainKHR get_swapchain() const { return m_swapchain; }
+        inline const VkExtent2D& get_swapchain_extent() const { return m_swapchain_extent; }
         inline const VkQueue get_graphics_queue() const { return m_graphics_queue; }
         inline const VkQueue get_present_mode_queue() const { return m_present_queue; }
         inline const VkPhysicalDeviceFeatures& get_physical_device_features() const { return m_physical_device_features; }
