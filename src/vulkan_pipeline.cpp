@@ -1,39 +1,65 @@
 #include "vulkan_pipeline.hpp"
 
 #include <iostream>
-#include <stdexcept>
 
 namespace vlk {
 
-    VulkanPipeline::VulkanPipeline(std::string_view vert_file, std::string_view frag_file) {
-        create_graphics_pipeline(vert_file, frag_file);
+    VulkanPipeline::VulkanPipeline(VulkanDevice* device) : m_device(device) {
+        std::vector<const char*> vertex_source = read_shader_source("shaders/bin/simple_shader.vert.spv");
+        std::vector<const char*> fragment_source = read_shader_source("shaders/bin/simple_shader.frag.spv");
+
+        VkShaderModule vertex = create_shader_module(vertex_source);
+        VkShaderModule fragment = create_shader_module(fragment_source);
+        VkPipelineShaderStageCreateInfo stage_create_info[] = { {}, {} };
+
+        stage_create_info[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stage_create_info[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        stage_create_info[0].module = vertex;
+        stage_create_info[0].pName = "main";
+        stage_create_info[0].pSpecializationInfo = nullptr;
+
+        stage_create_info[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stage_create_info[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stage_create_info[1].module = fragment;
+        stage_create_info[1].pName = "main";
+        stage_create_info[1].pSpecializationInfo = nullptr;
+
+        vkDestroyShaderModule(m_device->get_device(), vertex, nullptr);
+        vkDestroyShaderModule(m_device->get_device(), fragment, nullptr);
     }
 
-    std::vector<char> VulkanPipeline::read_file(std::string_view file_path) {
-        std::FILE* file = std::fopen(file_path.data(), "rb");
+    VulkanPipeline::~VulkanPipeline() {
+    }
 
+    std::vector<const char*> VulkanPipeline::read_shader_source(std::string_view shader_path) {
+        std::FILE* file = std::fopen(shader_path.data(), "rb");
         if (file == nullptr) {
-            std::cout << "failed to open file: " << file_path.data() << "\n";
+            std::cout << "vulkan pipeline failed to get shader source from path: \"" << shader_path << "\"\n";
             std::exit(-1);
         }
 
         std::fseek(file, 0, SEEK_END);
-        size_t length = static_cast<size_t>(std::ftell(file));
+        std::vector<const char*> source(std::ftell(file));
         std::fseek(file, 0, SEEK_SET);
 
-        std::vector<char> buffer = std::vector<char>(length);
-        std::fread(buffer.data(), buffer.size(), sizeof(char), file);
+        std::fread(source.data(), source.size(), 1, file);
         std::fclose(file);
 
-        return buffer;
+        return source;
     }
 
-    void VulkanPipeline::create_graphics_pipeline(std::string_view vert_file, std::string_view frag_file) {
-        auto vertex = read_file(vert_file);
-        auto fragment = read_file(frag_file);
+    VkShaderModule VulkanPipeline::create_shader_module(const std::vector<const char*>& shader_source) {
+        VkShaderModuleCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        create_info.codeSize = shader_source.size();
+        create_info.pCode = reinterpret_cast<const uint32_t*>(shader_source.data());
 
-        std::cout << "Vertex Shader Binary Size: " << vertex.size() << "\n";
-        std::cout << "Fragment Shader Binary Size: " << fragment.size() << "\n";
+        VkShaderModule shader{};
+        if (vkCreateShaderModule(m_device->get_device(), &create_info, nullptr, &shader) != VK_SUCCESS) {
+            std::cout << "failed to create shader module\n";
+            std::exit(-1);
+        }
+        return shader;
     }
 
 }

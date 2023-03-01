@@ -5,12 +5,12 @@
 namespace vlk {
 
     Application::Application() 
-        : m_window(Window(WINDOW_WIDTH, WINDOW_HEIGHT, "Learning Vulkan")), m_pipeline(VulkanPipeline("shaders/bin/simple_shader.vert.spv", "shaders/bin/simple_shader.frag.spv")),
-          m_device(VulkanDevice(&m_window)) {
-    }
+        : m_window(Window(WINDOW_WIDTH, WINDOW_HEIGHT, "Learning Vulkan")), 
+          m_device(new VulkanDevice(&m_window)), m_pipeline(new VulkanPipeline(m_device)) {}
 
     Application::~Application() {
-        m_device.terminate();
+        delete m_pipeline;
+        delete m_device;
     }
 
     void Application::run() {

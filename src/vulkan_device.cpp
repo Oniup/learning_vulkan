@@ -172,19 +172,7 @@ namespace vlk {
         _init_swapchain_images();
     }
 
-    void VulkanDevice::print_extension_support() const {
-        uint32_t extension_count = 0;
-        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
-        std::vector<VkExtensionProperties> extensions(extension_count);
-        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data());
-
-        std::cout << "list of available vulkan extensions that your devices supports:\n";
-        for (const VkExtensionProperties& extension : extensions) {
-            std::cout << "\t* (" << extension.specVersion << "):\t" << extension.extensionName << "\n";
-        }
-    }
-
-    void VulkanDevice::terminate() {
+    VulkanDevice::~VulkanDevice() {
 #if !defined(NDEBUG)
         if (m_enable_validation_layers) {
             auto destroy_debug_utils_messenger_ext_func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT");
@@ -204,6 +192,18 @@ namespace vlk {
         vkDestroyDevice(m_device, nullptr);
         m_window->destroy_surface(m_instance);
         vkDestroyInstance(m_instance, nullptr);
+    }
+
+    void VulkanDevice::print_extension_support() const {
+        uint32_t extension_count = 0;
+        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
+        std::vector<VkExtensionProperties> extensions(extension_count);
+        vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data());
+
+        std::cout << "list of available vulkan extensions that your devices supports:\n";
+        for (const VkExtensionProperties& extension : extensions) {
+            std::cout << "\t* (" << extension.specVersion << "):\t" << extension.extensionName << "\n";
+        }
     }
 
     void VulkanDevice::_populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info) {

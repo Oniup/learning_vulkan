@@ -19,8 +19,8 @@ namespace vlk {
 
     private:
         Window m_window;
-        VulkanPipeline m_pipeline;
-        VulkanDevice m_device;
+        VulkanDevice* m_device{ nullptr };
+        VulkanPipeline* m_pipeline{ nullptr };
     };
 
 }
